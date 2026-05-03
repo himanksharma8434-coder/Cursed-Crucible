@@ -13,7 +13,6 @@
         href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@500;700;800&family=Inter:wght@400;500;600&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 </head>
 
 <body>
@@ -23,7 +22,6 @@
         <main class="game-viewport" id="gameViewport">
             <div class="atmospheric-shadows"></div>
             <div class="warning-flash-overlay" id="warningFlash"></div>
-            <div class="merge-flash-overlay" id="mergeFlash"></div>
             <div class="canvas-container" id="canvasContainer"></div>
 
             <header class="game-header">
@@ -187,10 +185,9 @@
             </div>
         </main>
     </div>
-
-    <script src="audio.js"></script>
-    <script src="physics.js"></script>
-    <script src="game.js"></script>
+    <script type="module" src="/audio.js"></script>
+    <script type="module" src="/physics.js"></script>
+    <script type="module" src="/game.js"></script>
 </body>
 
 </html>

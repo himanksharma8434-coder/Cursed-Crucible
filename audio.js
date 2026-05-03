@@ -10,6 +10,7 @@ class DarkAudioEngine {
         this.ctx = null;
         this.isMutedBGM = false;
         this.isMutedSFX = false;
+        this.isMobile = true; // Force mobile mode for the APK wrapper
         
         // Audio nodes for Ambient BGM
         this.bgmNode = null;
@@ -21,6 +22,10 @@ class DarkAudioEngine {
         // State
         this.initialized = false;
         this.mergeCount = 0;
+        
+        // Cached Buffers
+        this.splashBuffer = null;
+        this.crunchBuffer = null;
     }
 
     /**
@@ -36,10 +41,31 @@ class DarkAudioEngine {
             this.bgmGain.gain.setValueAtTime(0, this.ctx.currentTime);
             this.bgmGain.connect(this.ctx.destination);
             
+            // Pre-calculate noise buffers to prevent GC lag during gameplay
+            this.generateNoiseBuffers();
+            
             this.initialized = true;
             this.startBGM();
         } catch (e) {
             console.error("Failed to initialize Web Audio API:", e);
+        }
+    }
+
+    generateNoiseBuffers() {
+        // Splash Noise
+        const splashSize = Math.floor(0.06 * this.ctx.sampleRate);
+        this.splashBuffer = this.ctx.createBuffer(1, splashSize, this.ctx.sampleRate);
+        const splashData = this.splashBuffer.getChannelData(0);
+        for (let i = 0; i < splashSize; i++) {
+            splashData[i] = (Math.random() * 2 - 1) * (1 - i / splashSize);
+        }
+
+        // Crunch Noise
+        const noiseSize = Math.floor(0.08 * this.ctx.sampleRate);
+        this.crunchBuffer = this.ctx.createBuffer(1, noiseSize, this.ctx.sampleRate);
+        const crunchData = this.crunchBuffer.getChannelData(0);
+        for (let i = 0; i < noiseSize; i++) {
+            crunchData[i] = Math.random() * 2 - 1;
         }
     }
 
@@ -243,14 +269,22 @@ class DarkAudioEngine {
         osc.frequency.setValueAtTime(150, now);
         osc.frequency.exponentialRampToValueAtTime(30, now + 0.35);
 
+        const gainNode = this.ctx.createGain();
+        gainNode.gain.setValueAtTime(0.45, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+        if (this.isMobile) {
+            osc.connect(gainNode);
+            gainNode.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.4);
+            return;
+        }
+
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.setValueAtTime(180, now);
         filter.frequency.exponentialRampToValueAtTime(60, now + 0.3);
-
-        const gainNode = this.ctx.createGain();
-        gainNode.gain.setValueAtTime(0.45, now);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
 
         osc.connect(filter);
         filter.connect(gainNode);
@@ -259,27 +293,23 @@ class DarkAudioEngine {
         osc.start(now);
         osc.stop(now + 0.45);
 
-        // Subtle splash noise layer
-        const splashSize = 0.06 * this.ctx.sampleRate;
-        const splashBuf = this.ctx.createBuffer(1, splashSize, this.ctx.sampleRate);
-        const splashData = splashBuf.getChannelData(0);
-        for (let i = 0; i < splashSize; i++) {
-            splashData[i] = (Math.random() * 2 - 1) * (1 - i / splashSize);
+        // Subtle splash noise layer using cached buffer
+        if (this.splashBuffer) {
+            const splashSrc = this.ctx.createBufferSource();
+            splashSrc.buffer = this.splashBuffer;
+            const splashFilter = this.ctx.createBiquadFilter();
+            splashFilter.type = 'bandpass';
+            splashFilter.frequency.setValueAtTime(800, now);
+            splashFilter.Q.setValueAtTime(2, now);
+            const splashGain = this.ctx.createGain();
+            splashGain.gain.setValueAtTime(0.12, now);
+            splashGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            splashSrc.connect(splashFilter);
+            splashFilter.connect(splashGain);
+            splashGain.connect(this.ctx.destination);
+            splashSrc.start(now + 0.05);
+            splashSrc.stop(now + 0.15);
         }
-        const splashSrc = this.ctx.createBufferSource();
-        splashSrc.buffer = splashBuf;
-        const splashFilter = this.ctx.createBiquadFilter();
-        splashFilter.type = 'bandpass';
-        splashFilter.frequency.setValueAtTime(800, now);
-        splashFilter.Q.setValueAtTime(2, now);
-        const splashGain = this.ctx.createGain();
-        splashGain.gain.setValueAtTime(0.12, now);
-        splashGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-        splashSrc.connect(splashFilter);
-        splashFilter.connect(splashGain);
-        splashGain.connect(this.ctx.destination);
-        splashSrc.start(now + 0.05);
-        splashSrc.stop(now + 0.15);
     }
 
     /**
@@ -292,7 +322,6 @@ class DarkAudioEngine {
         const now = this.ctx.currentTime;
         this.mergeCount++;
 
-        // Pitch variation for successive merges (rising pitch = excitement)
         const pitchBonus = Math.min(this.mergeCount * 30, 200);
 
         // --- THE POP: Resonant magic bell ---
@@ -310,6 +339,15 @@ class DarkAudioEngine {
         oscPop.start(now);
         oscPop.stop(now + 0.3);
 
+        if (this.isMobile) {
+            // Reset merge count after a timeout (combo window)
+            clearTimeout(this._mergeResetTimer);
+            this._mergeResetTimer = setTimeout(() => {
+                this.mergeCount = 0;
+            }, 2000);
+            return;
+        }
+
         // --- Harmonic overtone ---
         const overtone = this.ctx.createOscillator();
         overtone.type = 'sine';
@@ -322,31 +360,26 @@ class DarkAudioEngine {
         overtone.start(now);
         overtone.stop(now + 0.2);
 
-        // --- THE CRUNCH: Bone/Wisp crackle ---
-        const noiseSize = 0.08 * this.ctx.sampleRate;
-        const buffer = this.ctx.createBuffer(1, noiseSize, this.ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < noiseSize; i++) {
-            data[i] = Math.random() * 2 - 1;
+        // --- THE CRUNCH: Bone/Wisp crackle using cached buffer ---
+        if (this.crunchBuffer) {
+            const noiseSrc = this.ctx.createBufferSource();
+            noiseSrc.buffer = this.crunchBuffer;
+
+            const crunchFilter = this.ctx.createBiquadFilter();
+            crunchFilter.type = 'bandpass';
+            crunchFilter.frequency.setValueAtTime(1800 + pitchBonus * 2, now);
+
+            const gainCrunch = this.ctx.createGain();
+            gainCrunch.gain.setValueAtTime(0.2, now);
+            gainCrunch.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+            noiseSrc.connect(crunchFilter);
+            crunchFilter.connect(gainCrunch);
+            gainCrunch.connect(this.ctx.destination);
+
+            noiseSrc.start(now);
+            noiseSrc.stop(now + 0.1);
         }
-
-        const noiseSrc = this.ctx.createBufferSource();
-        noiseSrc.buffer = buffer;
-
-        const crunchFilter = this.ctx.createBiquadFilter();
-        crunchFilter.type = 'bandpass';
-        crunchFilter.frequency.setValueAtTime(1800 + pitchBonus * 2, now);
-
-        const gainCrunch = this.ctx.createGain();
-        gainCrunch.gain.setValueAtTime(0.2, now);
-        gainCrunch.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
-
-        noiseSrc.connect(crunchFilter);
-        crunchFilter.connect(gainCrunch);
-        gainCrunch.connect(this.ctx.destination);
-
-        noiseSrc.start(now);
-        noiseSrc.stop(now + 0.1);
 
         // Reset merge count after a timeout (combo window)
         clearTimeout(this._mergeResetTimer);

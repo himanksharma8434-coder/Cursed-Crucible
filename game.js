@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const comboDisplay = document.getElementById('comboDisplay');
     const comboCountEl = document.getElementById('comboCount');
     const warningFlash = document.getElementById('warningFlash');
-    const mergeFlash = document.getElementById('mergeFlash');
 
     let currentScore = 0;
     let highScore = parseInt(localStorage.getItem('cursed_crucible_highscore') || '0', 10);
@@ -65,10 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
             physics = new window.CruciblePhysics('canvasContainer', {
                 onScore: (pts, mergeX, mergeY, tierColor, tierLabel) => addScore(pts, mergeX, mergeY, tierColor, tierLabel),
                 onGameOver: () => triggerGameOver(),
-                triggerShake: () => triggerScreenShake(),
+                triggerShake: () => { if (physics) physics.shake(12, 5); },
                 onNextIngredientRoll: (nextTier) => updateNextIngredientPreview(nextTier),
                 onWarningStateChange: (isWarning) => updateWarningFlash(isWarning),
-                onMergeFlash: (normX, normY) => triggerMergeFlash(normX, normY),
                 onAscension: () => triggerVictory()
             });
             setupInputs();
@@ -77,18 +75,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setupInputs() {
         const canvas = physics.canvas;
-        canvas.addEventListener('mousemove', (e) => {
+        canvas.addEventListener('pointermove', (e) => {
             const rect = canvas.getBoundingClientRect();
             physics.mouseX = ((e.clientX - rect.left) / rect.width) * physics.width;
         });
-        canvas.addEventListener('touchmove', (e) => {
-            if (e.touches.length > 0) {
-                const rect = canvas.getBoundingClientRect();
-                physics.mouseX = ((e.touches[0].clientX - rect.left) / rect.width) * physics.width;
-            }
-        }, { passive: true });
-        canvas.addEventListener('click', () => physics.dropItem());
-        canvas.addEventListener('touchend', () => physics.dropItem());
+        canvas.addEventListener('pointerup', () => {
+            physics.dropItem();
+        });
     }
 
     function addScore(points, mergeX, mergeY, tierColor, tierLabel) {
@@ -111,8 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (comboCount >= 2) showCombo(comboCount);
 
         scoreCard.classList.remove('pop-effect');
-        void scoreCard.offsetWidth;
-        scoreCard.classList.add('pop-effect');
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            scoreCard.classList.add('pop-effect');
+        }));
 
         if (mergeX !== undefined && mergeY !== undefined) {
             spawnScorePopup(finalPoints, mergeX, mergeY, multiplier > 1);
@@ -130,76 +124,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function spawnScorePopup(points, worldX, worldY, isCombo) {
-        const rect = physics.canvas.getBoundingClientRect();
-        const viewport = gameViewport.getBoundingClientRect();
-        const screenX = rect.left - viewport.left + (worldX / physics.width) * rect.width;
-        const screenY = rect.top - viewport.top + (worldY / physics.height) * rect.height;
-
-        const popup = document.createElement('div');
-        popup.className = 'score-popup';
-        popup.textContent = `+${points}`;
-
-        if (isCombo) {
-            popup.style.fontSize = '20px';
-            popup.style.color = '#ff8c00';
-            popup.style.textShadow = '0 0 12px rgba(255, 140, 0, 0.8), 0 2px 4px rgba(0, 0, 0, 0.8)';
+        if (physics) {
+            physics.spawnTextParticle(worldX, worldY, `+${points}`, isCombo ? '#ff8c00' : '#ffd166', isCombo ? 28 : 22);
         }
-
-        popup.style.left = `${screenX}px`;
-        popup.style.top = `${screenY}px`;
-        popup.style.transform = 'translateX(-50%)';
-
-        gameViewport.appendChild(popup);
-        setTimeout(() => popup.remove(), 1200);
     }
 
     function spawnTierNamePopup(tierLabel, worldX, worldY, tierColor) {
-        const rect = physics.canvas.getBoundingClientRect();
-        const viewport = gameViewport.getBoundingClientRect();
-        const screenX = rect.left - viewport.left + (worldX / physics.width) * rect.width;
-        const screenY = rect.top - viewport.top + (worldY / physics.height) * rect.height + 20;
-
-        const popup = document.createElement('div');
-        popup.className = 'tier-name-popup';
-        popup.textContent = tierLabel;
-        popup.style.color = tierColor || '#c77dff';
-        popup.style.left = `${screenX}px`;
-        popup.style.top = `${screenY}px`;
-        popup.style.transform = 'translateX(-50%)';
-
-        gameViewport.appendChild(popup);
-        setTimeout(() => popup.remove(), 1500);
+        if (physics) {
+            physics.spawnTextParticle(worldX, worldY + 25, tierLabel, tierColor || '#c77dff', 14);
+        }
     }
 
     function showCombo(count) {
         comboCountEl.textContent = `×${count}`;
         comboDisplay.classList.remove('active');
-        void comboDisplay.offsetWidth;
-        comboDisplay.classList.add('active');
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            comboDisplay.classList.add('active');
+        }));
     }
 
     function hideCombo() {
         comboDisplay.classList.remove('active');
     }
 
-    function triggerScreenShake() {
-        gameViewport.classList.remove('shake-effect');
-        void gameViewport.offsetWidth;
-        gameViewport.classList.add('shake-effect');
-        setTimeout(() => gameViewport.classList.remove('shake-effect'), 300);
-    }
+
 
     function updateWarningFlash(isWarning) {
         if (isWarning) warningFlash.classList.add('active');
         else warningFlash.classList.remove('active');
-    }
-
-    function triggerMergeFlash(normX, normY) {
-        mergeFlash.style.setProperty('--flash-x', `${normX * 100}%`);
-        mergeFlash.style.setProperty('--flash-y', `${normY * 100}%`);
-        mergeFlash.classList.remove('flash');
-        void mergeFlash.offsetWidth;
-        mergeFlash.classList.add('flash');
     }
 
     function updateNextIngredientPreview(nextTier) {
@@ -308,37 +260,5 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Ambient background elements
-    const dust = document.getElementById('ambientDust');
-    if (dust) {
-        for (let i = 0; i < 35; i++) {
-            const ember = document.createElement('div');
-            ember.className = 'ember-particle';
-            const size = 1 + Math.random() * 3;
-            const colors = ['#9d4edd', '#c77dff', '#bf55ec', '#ff007f', '#ffb703'];
-            ember.style.width = `${size}px`;
-            ember.style.height = `${size}px`;
-            ember.style.background = colors[Math.floor(Math.random() * colors.length)];
-            ember.style.left = `${Math.random() * 100}%`;
-            ember.style.top = `${60 + Math.random() * 40}%`;
-            ember.style.animationDuration = `${8 + Math.random() * 15}s`;
-            ember.style.animationDelay = `${Math.random() * 10}s`;
-            ember.style.opacity = Math.random() * 0.5;
-            dust.appendChild(ember);
-        }
-        for (let i = 0; i < 15; i++) {
-            const star = document.createElement('div');
-            star.style.position = 'absolute';
-            star.style.width = `${1 + Math.random() * 2}px`;
-            star.style.height = star.style.width;
-            star.style.background = '#bf55ec';
-            star.style.borderRadius = '50%';
-            star.style.left = `${Math.random() * 100}%`;
-            star.style.top = `${Math.random() * 100}%`;
-            star.style.opacity = Math.random() * 0.35;
-            star.style.pointerEvents = 'none';
-            star.style.boxShadow = '0 0 4px #bf55ec';
-            dust.appendChild(star);
-        }
-    }
+    // Ambient background elements (Rendered inside Canvas for maximum performance)
 });

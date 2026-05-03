@@ -1,5 +1,7 @@
+import Matter from 'matter-js';
+
 /**
- * The Cursed Crucible - Physics & Render Engine
+ * The Cursed Crucible - Physics & Render Engine (Fully Optimized)
  * Built using Matter.js and high-fidelity HTML5 Canvas rendering.
  * Features: procedural fire, volumetric liquid, ambient fog, rune glyphs,
  * trail effects, advanced particles, cinematic rendering, and stable Suika physics.
@@ -10,8 +12,8 @@ class CruciblePhysics {
         this.container = document.getElementById(canvasContainerId);
         this.callbacks = gameCallbacks;
 
-        // Detect mobile for performance optimizations
-        this.isMobile = window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        // Force mobile optimizations since this is packaged inside an APK
+        this.isMobile = true;
 
         // Canvas Setup
         this.canvas = document.createElement('canvas');
@@ -36,12 +38,43 @@ class CruciblePhysics {
         this.warningTimeRemaining = 2.0;
         this.isAboveLine = false;
 
+        // Fixed Timestep Accumulator Setup (Decouples physics from screen refresh rate e.g. 90Hz/120Hz)
+        this.lastTime = performance.now();
+        this.accumulator = 0;
+        this.timestep = 1000 / 60; // 16.666ms (60 Hz)
+
+        // Active Items Tracking (Saves high-overhead Composite.allBodies traversing every frame)
+        this.items = [];
+
+        // Screen Shake Tracking
+        this.shakeDuration = 0;
+        this.shakeMagnitude = 0;
+
         // Visual Assets Loader
         this.images = {};
         this.loadAssets();
 
-        // Particles System
-        this.particles = [];
+        // Object Pooling for Particles and Trails (Prevents Garbage Collection lag)
+        this.maxParticles = 250;
+        this.particlePool = [];
+        for (let i = 0; i < this.maxParticles; i++) {
+            this.particlePool.push({
+                active: false,
+                x: 0, y: 0, vx: 0, vy: 0, radius: 0, maxRadius: 0,
+                color: '', opacity: 0, decay: 0, isRing: false, isSpark: false
+            });
+        }
+
+        this.maxTrails = 60;
+        this.trailPool = [];
+        for (let i = 0; i < this.maxTrails; i++) {
+            this.trailPool.push({
+                active: false,
+                x: 0, y: 0, radius: 0, color: '', opacity: 0, decay: 0
+            });
+        }
+
+        // Bubbles System
         this.bubbles = this.initBubbles(20);
 
         // Ambient fog system
@@ -53,13 +86,15 @@ class CruciblePhysics {
         // Fire particles around the cauldron
         this.fireParticles = this.initFireParticles(30);
 
-        // Screen-space trail for dropped items
-        this.trails = [];
+        // Background embers (Replaces high-overhead DOM elements)
+        this.backgroundEmbers = this.initBackgroundEmbers(30);
 
         // Frame counter for animation timing
         this.frameCount = 0;
+        this.textParticles = [];
 
-        // Matter.js Setup
+        // Matter.js Setup and Gradient Caching
+        this.initCachedGradients();
         this.initMatter();
 
         // Start Loop
@@ -89,6 +124,15 @@ class CruciblePhysics {
                 console.warn(`Asset failed to load: ${src}. Procedural fallbacks will render.`);
             };
         }
+    }
+
+    spawnTextParticle(x, y, text, color, size) {
+        this.textParticles.push({
+            x, y, text, color, size,
+            vy: -1.5 - Math.random(),
+            life: 1.0,
+            decay: 0.015 + Math.random() * 0.01
+        });
     }
 
     removeBackground(img) {
@@ -196,8 +240,8 @@ class CruciblePhysics {
             cw = (containerHeight * 9) / 16;
         }
 
-        // High-DPI screen support for crisp mobile graphics
-        const dpr = window.devicePixelRatio || 1;
+        // Capped to 1 on mobile to prevent extreme rendering lag
+        const dpr = 1;
         this.canvas.width = this.width * dpr;
         this.canvas.height = this.height * dpr;
 
@@ -215,7 +259,7 @@ class CruciblePhysics {
     }
 
     initFogParticles(count) {
-        const finalCount = this.isMobile ? Math.floor(count / 2) : count;
+        const finalCount = Math.floor(count / 2);
         const arr = [];
         for (let i = 0; i < finalCount; i++) {
             arr.push({
@@ -228,15 +272,6 @@ class CruciblePhysics {
             });
         }
         return arr;
-    }
-
-    rollNextIngredients() {
-        this.currentTierIndex = 6;
-        this.nextTierIndex = 6;
-
-        if (this.callbacks.onNextIngredientRoll) {
-            this.callbacks.onNextIngredientRoll(this.nextTierIndex);
-        }
     }
 
     initRuneGlyphs() {
@@ -258,7 +293,7 @@ class CruciblePhysics {
     }
 
     initFireParticles(count) {
-        const finalCount = this.isMobile ? Math.floor(count / 2) : count;
+        const finalCount = Math.floor(count / 2);
         const arr = [];
         for (let i = 0; i < finalCount; i++) {
             arr.push(this.createFireParticle());
@@ -281,14 +316,33 @@ class CruciblePhysics {
         };
     }
 
-    initMatter() {
-        const { Engine, World, Bodies, Events, Runner } = Matter;
+    initBackgroundEmbers(count) {
+        const finalCount = Math.floor(count / 2);
+        const arr = [];
+        const colors = ['#9d4edd', '#c77dff', '#bf55ec', '#ff007f', '#ffb703'];
+        for (let i = 0; i < finalCount; i++) {
+            arr.push({
+                x: Math.random() * this.width,
+                y: Math.random() * this.height,
+                size: 1 + Math.random() * 2,
+                speed: 0.3 + Math.random() * 0.5,
+                opacity: 0.15 + Math.random() * 0.3,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                wavePhase: Math.random() * Math.PI * 2,
+                waveSpeed: 0.01 + Math.random() * 0.02
+            });
+        }
+        return arr;
+    }
 
-        // Increased engine iterations for stable 'Suika' item stacking
+    initMatter() {
+        const { Engine, World, Bodies, Events } = Matter;
+
+        // Reset physics engine solver iterations to defaults for mobile performance
         this.engine = Engine.create({
-            gravity: { y: 1.2 },
-            positionIterations: 12,
-            velocityIterations: 8
+            gravity: { y: 2.8 },
+            positionIterations: 6,
+            velocityIterations: 4
         });
         this.world = this.engine.world;
 
@@ -307,9 +361,8 @@ class CruciblePhysics {
         walls.push(Bodies.rectangle(92 - wallThickness / 2, 450, wallThickness, 400, wallOpts));
         walls.push(Bodies.rectangle(358 + wallThickness / 2, 450, wallThickness, 400, wallOpts));
 
-        // Procedural Concave Cauldron Bottom (Smooth Ellipse)
-        // Center x=225, Width radius=133, Height radius=70. Connects perfectly from x=92 to x=358.
-        const numSegments = 24;
+        // Halved segments count (12 segments instead of 24) to reduce collision solver constraints checks by 50%
+        const numSegments = 12;
         for (let i = 0; i <= numSegments; i++) {
             const theta = Math.PI * (i / numSegments); // Sweeps from 0 to PI
             const rx = 133 + wallThickness / 2;
@@ -333,9 +386,6 @@ class CruciblePhysics {
         }
 
         World.add(this.world, walls);
-
-        this.runner = Runner.create();
-        Runner.run(this.runner, this.engine);
 
         Events.on(this.engine, 'collisionStart', (e) => this.handleCollisions(e));
 
@@ -368,10 +418,17 @@ class CruciblePhysics {
         return tiers[tier];
     }
 
-    dropItem() {
-        // Add this.isPaused to the block list
-        if (this.dropCooldown || this.isGameOver || this.isPaused) return;
+    removeItem(body) {
+        const idx = this.items.indexOf(body);
+        if (idx !== -1) {
+            // O(1) in-place swap-and-pop deletion to prevent shifting and GC array allocations
+            this.items[idx] = this.items[this.items.length - 1];
+            this.items.pop();
+        }
+    }
 
+    dropItem() {
+        if (this.dropCooldown || this.isGameOver || this.isPaused) return;
 
         const tier = this.currentTierIndex;
         const data = this.getTierData(tier);
@@ -385,8 +442,8 @@ class CruciblePhysics {
         const item = Bodies.circle(dropX, this.dropZoneY, data.radius, {
             restitution: 0.15, // Slight bounce gives the items life
             friction: 0.3,     // Low friction ensures they slide gracefully into gaps
-            frictionAir: 0.005,
-            density: 0.002,    // CONSTANT DENSITY - radius size handles mass difference naturally!
+            frictionAir: 0.001,
+            density: 0.005,    // CONSTANT DENSITY - radius size handles mass difference naturally!
             label: `tier_${tier}`
         });
 
@@ -397,6 +454,7 @@ class CruciblePhysics {
         Body.setAngularVelocity(item, (Math.random() - 0.5) * 0.1);
 
         World.add(this.world, item);
+        this.items.push(item);
 
         if (window.gameAudio) window.gameAudio.playDrop();
 
@@ -438,15 +496,13 @@ class CruciblePhysics {
 
             // Remove bodies instantly to prevent overlap explosions
             Composite.remove(this.world, [bodyA, bodyB]);
+            this.removeItem(bodyA);
+            this.removeItem(bodyB);
 
             if (window.gameAudio) window.gameAudio.playMerge();
             this.callbacks.triggerShake();
 
             const tierData = this.getTierData(tier);
-
-            if (this.callbacks.onMergeFlash) {
-                this.callbacks.onMergeFlash(midX / this.width, midY / this.height);
-            }
 
             if (tier < 6) {
                 const nextTier = tier + 1;
@@ -471,6 +527,7 @@ class CruciblePhysics {
                 Body.setVelocity(merged, { x: avgVx, y: Math.min(avgVy, 0) - 2.5 });
 
                 Composite.add(this.world, merged);
+                this.items.push(merged);
 
                 setTimeout(() => { merged.justMerged = false; }, 400);
 
@@ -481,7 +538,7 @@ class CruciblePhysics {
             } else {
                 this.callbacks.onScore(1000, midX, midY, '#bf55ec', '★ ASCENSION ★');
                 this.createEpicSupernova(midX, midY);
-                // Triger the victory
+                // Trigger the victory
                 if (this.callbacks.onAscension && !this.hasAscended) {
                     this.hasAscended = true;
                     setTimeout(() => {
@@ -494,7 +551,7 @@ class CruciblePhysics {
     }
 
     initBubbles(count) {
-        const finalCount = this.isMobile ? Math.floor(count / 2) : count;
+        const finalCount = Math.floor(count / 2);
         const arr = [];
         for (let i = 0; i < finalCount; i++) {
             arr.push({
@@ -508,16 +565,61 @@ class CruciblePhysics {
         return arr;
     }
 
+    spawnParticle(x, y, vx, vy, radius, color, decay, isRing = false, isSpark = false, maxRadius = 0) {
+        let p = null;
+        for (let i = 0; i < this.maxParticles; i++) {
+            if (!this.particlePool[i].active) {
+                p = this.particlePool[i];
+                break;
+            }
+        }
+        if (!p) {
+            p = this.particlePool[Math.floor(Math.random() * this.maxParticles)];
+        }
+        p.active = true;
+        p.x = x;
+        p.y = y;
+        p.vx = vx;
+        p.vy = vy;
+        p.radius = radius;
+        p.maxRadius = maxRadius;
+        p.color = color;
+        p.opacity = 1.0;
+        p.decay = decay;
+        p.isRing = isRing;
+        p.isSpark = isSpark;
+    }
+
+    spawnTrail(x, y, radius, color, opacity, decay) {
+        let t = null;
+        for (let i = 0; i < this.maxTrails; i++) {
+            if (!this.trailPool[i].active) {
+                t = this.trailPool[i];
+                break;
+            }
+        }
+        if (!t) {
+            t = this.trailPool[Math.floor(Math.random() * this.maxTrails)];
+        }
+        t.active = true;
+        t.x = x;
+        t.y = y;
+        t.radius = radius;
+        t.color = color;
+        t.opacity = opacity;
+        t.decay = decay;
+    }
+
     addTrail(x, y, color) {
         for (let i = 0; i < 5; i++) {
-            this.trails.push({
-                x: x + (Math.random() - 0.5) * 6,
-                y: y + i * 8,
-                radius: 2 + Math.random() * 3,
+            this.spawnTrail(
+                x + (Math.random() - 0.5) * 6,
+                y + i * 8,
+                2 + Math.random() * 3,
                 color,
-                opacity: 0.5 - i * 0.08,
-                decay: 0.03
-            });
+                0.5 - i * 0.08,
+                0.03
+            );
         }
     }
 
@@ -525,79 +627,102 @@ class CruciblePhysics {
         for (let i = 0; i < 12; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = 1 + Math.random() * 2.5;
-            this.particles.push({
+            this.spawnParticle(
                 x, y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed - 1.5,
-                radius: 2 + Math.random() * 5,
-                color, opacity: 0.7,
-                decay: 0.02 + Math.random() * 0.02
-            });
+                Math.cos(angle) * speed,
+                Math.sin(angle) * speed - 1.5,
+                2 + Math.random() * 5,
+                color,
+                0.02 + Math.random() * 0.02,
+                false, false
+            );
         }
     }
 
     createMergeBlast(x, y, color, radius) {
-        this.particles.push({
-            x, y, vx: 0, vy: 0,
-            radius: 5, maxRadius: radius * 3,
-            color, isRing: true,
-            opacity: 0.8, decay: 0.04
-        });
+        this.spawnParticle(x, y, 0, 0, 5, color, 0.04, true, false, radius * 3);
 
         for (let i = 0; i < 20; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = 2 + Math.random() * 5;
-            this.particles.push({
+            this.spawnParticle(
                 x, y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                radius: 1.5 + Math.random() * 3.5,
-                color, opacity: 1,
-                decay: 0.025 + Math.random() * 0.02,
-                isSpark: true
-            });
+                Math.cos(angle) * speed,
+                Math.sin(angle) * speed,
+                1.5 + Math.random() * 3.5,
+                color,
+                0.025 + Math.random() * 0.02,
+                false, true
+            );
         }
     }
 
     createMergeRing(x, y, color) {
-        this.particles.push({
-            x, y, vx: 0, vy: 0,
-            radius: 3, maxRadius: 100,
-            color, isRing: true,
-            opacity: 0.6, decay: 0.02
-        });
+        this.spawnParticle(x, y, 0, 0, 3, color, 0.02, true, false, 100);
     }
 
     createEpicSupernova(x, y) {
         for (let r = 0; r < 3; r++) {
-            this.particles.push({
-                x, y, vx: 0, vy: 0,
-                radius: 5 + r * 10, maxRadius: 200 + r * 30,
-                color: r === 0 ? '#fff' : (r === 1 ? '#bf55ec' : '#ff007f'),
-                isRing: true,
-                opacity: 1 - r * 0.2, decay: 0.015 + r * 0.005
-            });
+            this.spawnParticle(
+                x, y, 0, 0, 5 + r * 10,
+                r === 0 ? '#fff' : (r === 1 ? '#bf55ec' : '#ff007f'),
+                0.015 + r * 0.005,
+                true, false, 200 + r * 30
+            );
         }
 
+        const colors = ['#bf55ec', '#ff007f', '#c77dff', '#fff', '#ffd166'];
         for (let i = 0; i < 60; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = 3 + Math.random() * 12;
-            const colors = ['#bf55ec', '#ff007f', '#c77dff', '#fff', '#ffd166'];
-            this.particles.push({
+            this.spawnParticle(
                 x, y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                radius: 2 + Math.random() * 7,
-                color: colors[Math.floor(Math.random() * colors.length)],
-                opacity: 1, decay: 0.012 + Math.random() * 0.01,
-                isSpark: true
-            });
+                Math.cos(angle) * speed,
+                Math.sin(angle) * speed,
+                2 + Math.random() * 7,
+                colors[Math.floor(Math.random() * colors.length)],
+                0.012 + Math.random() * 0.01,
+                false, true
+            );
         }
     }
 
+    drawTextParticles() {
+        if (this.textParticles.length === 0) return;
+        this.ctx.save();
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        
+        for (let i = this.textParticles.length - 1; i >= 0; i--) {
+            const tp = this.textParticles[i];
+            tp.y += tp.vy;
+            tp.life -= tp.decay;
+            
+            if (tp.life <= 0) {
+                this.textParticles.splice(i, 1);
+                continue;
+            }
+            
+            this.ctx.globalAlpha = Math.max(0, tp.life);
+            this.ctx.fillStyle = tp.color;
+            this.ctx.font = `bold ${tp.size}px "Cinzel", serif`;
+            
+            this.ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            this.ctx.shadowBlur = 4;
+            this.ctx.shadowOffsetX = 0;
+            this.ctx.shadowOffsetY = 2;
+            
+            this.ctx.fillText(tp.text, tp.x, tp.y);
+        }
+        this.ctx.restore();
+    }
+
     updateParticles() {
-        for (let i = this.particles.length - 1; i >= 0; i--) {
-            const p = this.particles[i];
+        // Update particles pool
+        for (let i = 0; i < this.maxParticles; i++) {
+            const p = this.particlePool[i];
+            if (!p.active) continue;
+
             if (p.isRing) {
                 p.radius += 4;
                 p.opacity -= p.decay;
@@ -611,18 +736,24 @@ class CruciblePhysics {
                 }
                 p.opacity -= p.decay;
             }
+
             if (p.opacity <= 0 || (p.maxRadius && p.radius >= p.maxRadius)) {
-                this.particles.splice(i, 1);
+                p.active = false;
             }
         }
 
-        for (let i = this.trails.length - 1; i >= 0; i--) {
-            this.trails[i].opacity -= this.trails[i].decay;
-            if (this.trails[i].opacity <= 0) {
-                this.trails.splice(i, 1);
+        // Update trails pool
+        for (let i = 0; i < this.maxTrails; i++) {
+            const t = this.trailPool[i];
+            if (!t.active) continue;
+
+            t.opacity -= t.decay;
+            if (t.opacity <= 0) {
+                t.active = false;
             }
         }
 
+        // Update fire particles (always active)
         for (let i = 0; i < this.fireParticles.length; i++) {
             const f = this.fireParticles[i];
             f.x += f.vx;
@@ -638,16 +769,14 @@ class CruciblePhysics {
     checkGameOverCondition() {
         if (this.isGameOver) return;
 
-        const bodies = Matter.Composite.allBodies(this.world);
         let itemsAboveLine = false;
+        const now = Date.now();
 
-        for (let i = 0; i < bodies.length; i++) {
-            const body = bodies[i];
-            if (body.isStatic) continue;
-
+        for (let i = 0; i < this.items.length; i++) {
+            const body = this.items[i];
             const rad = body.circleRadius || 10;
             const topEdge = body.position.y - rad;
-            const age = Date.now() - (body.creationTime || 0);
+            const age = now - (body.creationTime || 0);
 
             if (topEdge < this.cauldronRimY && age > 1200) {
                 if (body.velocity.y < 0.15 && Math.abs(body.velocity.x) < 0.15) {
@@ -685,7 +814,6 @@ class CruciblePhysics {
 
     triggerGameOver() {
         this.isGameOver = true;
-        this.runner.enabled = false;
         if (window.gameAudio) window.gameAudio.playGameOver();
         if (this.callbacks.onWarningStateChange) this.callbacks.onWarningStateChange(false);
         this.callbacks.onGameOver();
@@ -695,8 +823,42 @@ class CruciblePhysics {
         requestAnimationFrame(() => this.animate());
         this.frameCount++;
 
+        // Delta-Time Accumulator Loop (Decouples physics simulation frequency from display refresh rate)
+        const currentTime = performance.now();
+        let frameTime = currentTime - this.lastTime;
+        this.lastTime = currentTime;
+
+        // Cap frameTime to avoid lag spikes from locking up updates (spiral of death)
+        if (frameTime > 250) {
+            frameTime = 250;
+        }
+
+        this.accumulator += frameTime;
+
+        if (!this.isGameOver && !this.isPaused) {
+            while (this.accumulator >= this.timestep) {
+                Matter.Engine.update(this.engine, this.timestep);
+                this.accumulator -= this.timestep;
+            }
+        } else {
+            this.accumulator = 0;
+        }
+
         this.updateParticles();
         this.checkGameOverCondition();
+
+        // Calculate screen shake offsets
+        let dx = 0;
+        let dy = 0;
+        if (this.shakeDuration > 0) {
+            dx = (Math.random() - 0.5) * this.shakeMagnitude;
+            dy = (Math.random() - 0.5) * this.shakeMagnitude;
+            this.shakeDuration--;
+        }
+
+        // Apply screen shake to canvas drawing offset in a single save/restore block
+        this.ctx.save();
+        this.ctx.translate(dx, dy);
 
         const now = Date.now();
 
@@ -708,13 +870,13 @@ class CruciblePhysics {
 
         this.drawAmbientFog(now);
         this.drawRuneGlyphs(now);
+        this.drawBackgroundEmbers(); // background embers render behind cauldron/items
         this.drawCauldronBackFluid();
         this.drawFireParticles();
         this.drawTrails();
 
-        const bodies = Matter.Composite.allBodies(this.world);
-        for (let i = 0; i < bodies.length; i++) {
-            if (!bodies[i].isStatic) this.drawItemBody(bodies[i]);
+        for (let i = 0; i < this.items.length; i++) {
+            this.drawItemBody(this.items[i]);
         }
 
         if (this.images.cauldron) {
@@ -727,33 +889,177 @@ class CruciblePhysics {
         this.drawWarningLine();
         this.drawDropIndicator();
         this.drawParticles();
+        this.drawTextParticles();
         this.drawVignette();
+
+        this.ctx.restore();
     }
 
-    drawProceduralBackground(now) {
-        const pulseOffset = Math.sin(now / 5000) * 15;
-        const bgGrad = this.ctx.createRadialGradient(
-            225, 350 + pulseOffset, 30,
-            225, 375, 480
-        );
+    initCachedGradients() {
+        // Cache Procedural Background
+        this.cachedBgCanvas = document.createElement('canvas');
+        this.cachedBgCanvas.width = this.width;
+        this.cachedBgCanvas.height = this.height;
+        const bgCtx = this.cachedBgCanvas.getContext('2d');
+        const bgGrad = bgCtx.createRadialGradient(225, 375, 30, 225, 375, 480);
         bgGrad.addColorStop(0, '#1a1030');
         bgGrad.addColorStop(0.3, '#120a20');
         bgGrad.addColorStop(0.7, '#0a0614');
         bgGrad.addColorStop(1, '#04030a');
-        this.ctx.fillStyle = bgGrad;
-        this.ctx.fillRect(0, 0, this.width, this.height);
-
-        if (this.frameCount % 3 === 0) {
-            this.ctx.save();
-            this.ctx.globalAlpha = 0.015;
-            for (let i = 0; i < 80; i++) {
-                const x = Math.random() * this.width;
-                const y = Math.random() * this.height;
-                this.ctx.fillStyle = Math.random() < 0.5 ? '#9d4edd' : '#bf55ec';
-                this.ctx.fillRect(x, y, 1, 1);
-            }
-            this.ctx.restore();
+        bgCtx.fillStyle = bgGrad;
+        bgCtx.fillRect(0, 0, this.width, this.height);
+        
+        // Add some static dust/stars to the cached bg
+        bgCtx.globalAlpha = 0.3;
+        for (let i = 0; i < 200; i++) {
+            const x = Math.random() * this.width;
+            const y = Math.random() * this.height;
+            bgCtx.fillStyle = Math.random() < 0.5 ? '#9d4edd' : '#bf55ec';
+            bgCtx.fillRect(x, y, 1, 1);
         }
+
+        // Cache Fog Puff (max radius around 80)
+        this.cachedFogCanvas = document.createElement('canvas');
+        this.cachedFogCanvas.width = 160;
+        this.cachedFogCanvas.height = 160;
+        const fogCtx = this.cachedFogCanvas.getContext('2d');
+        const fogGrad = fogCtx.createRadialGradient(80, 80, 0, 80, 80, 80);
+        fogGrad.addColorStop(0, 'rgba(157, 78, 221, 0.15)');
+        fogGrad.addColorStop(0.5, 'rgba(60, 9, 108, 0.05)');
+        fogGrad.addColorStop(1, 'transparent');
+        fogCtx.fillStyle = fogGrad;
+        fogCtx.fillRect(0, 0, 160, 160);
+
+        // Cache Vignette Gradients
+        this.topVignetteGrad = this.ctx.createLinearGradient(0, 0, 0, 120);
+        this.topVignetteGrad.addColorStop(0, 'rgba(4, 3, 10, 0.7)');
+        this.topVignetteGrad.addColorStop(1, 'transparent');
+
+        this.botVignetteGrad = this.ctx.createLinearGradient(0, this.height - 50, 0, this.height);
+        this.botVignetteGrad.addColorStop(0, 'transparent');
+        this.botVignetteGrad.addColorStop(1, 'rgba(4, 3, 10, 0.4)');
+
+        // Cache Cauldron back fluid gradients
+        const surfY = 490;
+        this.backFluidGrad = this.ctx.createLinearGradient(0, surfY, 0, 670);
+        this.backFluidGrad.addColorStop(0, '#6a1fad');
+        this.backFluidGrad.addColorStop(0.3, '#5a189a');
+        this.backFluidGrad.addColorStop(0.6, '#3c096c');
+        this.backFluidGrad.addColorStop(1, '#10002b');
+
+        this.backFluidShimmerGrad = this.ctx.createLinearGradient(0, surfY, 0, surfY + 20);
+        this.backFluidShimmerGrad.addColorStop(0, 'rgba(199, 125, 255, 1.0)');
+        this.backFluidShimmerGrad.addColorStop(1, 'transparent');
+
+        // Cache Cauldron front fluid gradient
+        const frontSurfY = 495;
+        this.frontFluidGrad = this.ctx.createLinearGradient(0, frontSurfY - 10, 0, frontSurfY + 60);
+        this.frontFluidGrad.addColorStop(0, 'rgba(199, 125, 255, 0.4)');
+        this.frontFluidGrad.addColorStop(0.15, 'rgba(157, 78, 221, 0.3)');
+        this.frontFluidGrad.addColorStop(0.4, 'rgba(157, 78, 221, 0.15)');
+        this.frontFluidGrad.addColorStop(1, 'rgba(60, 9, 108, 0.0)');
+
+        // Cache Warning Line Gradient
+        this.warnLineGrad = this.ctx.createLinearGradient(0, this.cauldronRimY - 30, 0, this.cauldronRimY);
+        this.warnLineGrad.addColorStop(0, 'transparent');
+        this.warnLineGrad.addColorStop(1, 'rgba(230, 57, 70, 1.0)');
+
+        // Cache drop indicator line gradients per tier
+        this.dropLineGradients = {};
+        for (let tier = 1; tier <= 6; tier++) {
+            const color = this.getTierData(tier).color;
+            const grad = this.ctx.createLinearGradient(0, this.dropZoneY, 0, 490);
+            grad.addColorStop(0, `${color}30`);
+            grad.addColorStop(0.5, `${color}15`);
+            grad.addColorStop(1, `${color}05`);
+            this.dropLineGradients[tier] = grad;
+        }
+
+        // Cache item glow and pre-render procedural canvases per tier (Removes text and path overhead in loop)
+        this.itemGlowGradients = {};
+        this.cachedItemCanvases = {};
+        for (let tier = 1; tier <= 6; tier++) {
+            const data = this.getTierData(tier);
+            const r = data.radius;
+
+            // 1. Cached Glow Gradients
+            const glowGrad = this.ctx.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.6);
+            glowGrad.addColorStop(0, data.color);
+            glowGrad.addColorStop(0.5, data.color + '40');
+            glowGrad.addColorStop(1, 'transparent');
+            this.itemGlowGradients[tier] = glowGrad;
+
+            // 2. Offscreen pre-rendered canvases for procedural vectors (emoji/shape caches)
+            const itemCanvas = document.createElement('canvas');
+            const size = Math.ceil(r * 2 + 6); // pad slightly for stroke width
+            itemCanvas.width = size;
+            itemCanvas.height = size;
+            const itemCtx = itemCanvas.getContext('2d');
+
+            itemCtx.translate(size / 2, size / 2);
+
+            const procGrad = itemCtx.createRadialGradient(-r / 3, -r / 3, r / 8, 0, 0, r);
+            procGrad.addColorStop(0, '#ffffff');
+            procGrad.addColorStop(0.15, data.color);
+            procGrad.addColorStop(0.6, data.color + 'aa');
+            procGrad.addColorStop(1, '#0c0a10');
+
+            itemCtx.fillStyle = procGrad;
+            itemCtx.beginPath();
+            itemCtx.arc(0, 0, r, 0, Math.PI * 2);
+            itemCtx.fill();
+
+            itemCtx.strokeStyle = data.color + '60';
+            itemCtx.lineWidth = 1;
+            itemCtx.beginPath();
+            itemCtx.arc(0, 0, r * 0.65, 0, Math.PI * 2);
+            itemCtx.stroke();
+
+            itemCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            itemCtx.lineWidth = 1.5;
+            itemCtx.beginPath();
+            itemCtx.arc(0, 0, r, 0, Math.PI * 2);
+            itemCtx.stroke();
+
+            itemCtx.fillStyle = '#fff';
+            itemCtx.textAlign = 'center';
+            itemCtx.textBaseline = 'middle';
+
+            switch (tier) {
+                case 1:
+                    itemCtx.fillStyle = 'rgba(255,255,255,0.9)';
+                    itemCtx.beginPath();
+                    itemCtx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
+                    itemCtx.fill();
+                    break;
+                case 2:
+                    itemCtx.font = `bold ${r * 1.1}px Arial`;
+                    itemCtx.fillText('🦷', 0, 2);
+                    break;
+                case 3:
+                    itemCtx.font = `${r}px Arial`;
+                    itemCtx.fillText('🧪', 0, 2);
+                    break;
+                case 4:
+                    itemCtx.font = `${r}px Arial`;
+                    itemCtx.fillText('💍', 0, 2);
+                    break;
+                case 5:
+                    itemCtx.font = `${r}px Arial`;
+                    itemCtx.fillText('💀', 0, 2);
+                    break;
+                case 6:
+                    itemCtx.font = `${r * 1.1}px Arial`;
+                    itemCtx.fillText('👑', 0, 2);
+                    break;
+            }
+
+            this.cachedItemCanvases[tier] = itemCanvas;
+        }
+    }
+
+    drawProceduralBackground(now) {
+        this.ctx.drawImage(this.cachedBgCanvas, 0, 0, this.width, this.height);
     }
 
     drawAmbientFog(now) {
@@ -765,12 +1071,8 @@ class CruciblePhysics {
             const breathe = Math.sin(now / 3000 + fog.phase) * 0.015;
             this.ctx.globalAlpha = fog.opacity + breathe;
 
-            const grad = this.ctx.createRadialGradient(fog.x, fog.y, 0, fog.x, fog.y, fog.radius);
-            grad.addColorStop(0, 'rgba(157, 78, 221, 0.15)');
-            grad.addColorStop(0.5, 'rgba(60, 9, 108, 0.05)');
-            grad.addColorStop(1, 'transparent');
-            this.ctx.fillStyle = grad;
-            this.ctx.fillRect(fog.x - fog.radius, fog.y - fog.radius, fog.radius * 2, fog.radius * 2);
+            // Draw using cached fog canvas
+            this.ctx.drawImage(this.cachedFogCanvas, fog.x - fog.radius, fog.y - fog.radius, fog.radius * 2, fog.radius * 2);
         }
         this.ctx.restore();
     }
@@ -797,51 +1099,63 @@ class CruciblePhysics {
     }
 
     drawFireParticles() {
-        this.ctx.save();
-        for (const f of this.fireParticles) {
-            this.ctx.globalAlpha = f.life * 0.6;
-            this.ctx.shadowBlur = this.isMobile ? 0 : 8;
-            this.ctx.shadowColor = f.color;
-
-            const grad = this.ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.radius);
-            grad.addColorStop(0, f.color);
-            grad.addColorStop(0.6, f.color);
-            grad.addColorStop(1, 'transparent');
-
-            this.ctx.fillStyle = grad;
+        for (let i = 0; i < this.fireParticles.length; i++) {
+            const f = this.fireParticles[i];
+            this.ctx.globalAlpha = f.life * 0.8;
+            this.ctx.fillStyle = f.color;
             this.ctx.beginPath();
             this.ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
             this.ctx.fill();
         }
-        this.ctx.shadowBlur = 0;
-        this.ctx.restore();
+        this.ctx.globalAlpha = 1.0;
+    }
+
+    drawBackgroundEmbers() {
+        for (let i = 0; i < this.backgroundEmbers.length; i++) {
+            const e = this.backgroundEmbers[i];
+            e.y -= e.speed;
+            e.wavePhase += e.waveSpeed;
+            e.x += Math.sin(e.wavePhase) * 0.15;
+            if (e.y < -10) {
+                e.y = this.height + 10;
+                e.x = Math.random() * this.width;
+            }
+            this.ctx.globalAlpha = e.opacity;
+            this.ctx.fillStyle = e.color;
+            this.ctx.beginPath();
+            this.ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+        this.ctx.globalAlpha = 1.0;
     }
 
     drawTrails() {
-        for (const t of this.trails) {
-            this.ctx.save();
+        const useShadow = !this.isMobile;
+        for (let i = 0; i < this.maxTrails; i++) {
+            const t = this.trailPool[i];
+            if (!t.active) continue;
+
             this.ctx.globalAlpha = t.opacity;
             this.ctx.fillStyle = t.color;
-            this.ctx.shadowBlur = this.isMobile ? 0 : 4;
-            this.ctx.shadowColor = t.color;
+            if (useShadow) {
+                this.ctx.shadowBlur = 4;
+                this.ctx.shadowColor = t.color;
+            }
             this.ctx.beginPath();
             this.ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
             this.ctx.fill();
-            this.ctx.restore();
         }
+        if (useShadow) {
+            this.ctx.shadowBlur = 0;
+        }
+        this.ctx.globalAlpha = 1.0;
     }
 
     drawVignette() {
-        const topGrad = this.ctx.createLinearGradient(0, 0, 0, 120);
-        topGrad.addColorStop(0, 'rgba(4, 3, 10, 0.7)');
-        topGrad.addColorStop(1, 'transparent');
-        this.ctx.fillStyle = topGrad;
+        this.ctx.fillStyle = this.topVignetteGrad;
         this.ctx.fillRect(0, 0, this.width, 120);
 
-        const botGrad = this.ctx.createLinearGradient(0, this.height - 50, 0, this.height);
-        botGrad.addColorStop(0, 'transparent');
-        botGrad.addColorStop(1, 'rgba(4, 3, 10, 0.4)');
-        this.ctx.fillStyle = botGrad;
+        this.ctx.fillStyle = this.botVignetteGrad;
         this.ctx.fillRect(0, this.height - 50, this.width, 50);
     }
 
@@ -853,22 +1167,21 @@ class CruciblePhysics {
         const pos = body.position;
         const angle = body.angle;
 
+        // Consolidated drawing state into 1 save/restore block
         this.ctx.save();
         this.ctx.translate(pos.x, pos.y);
+
+        // 1. Glow Layer (Cached gradient, shadows off on mobile)
+        const useShadow = !this.isMobile;
         const pulseIntensity = 0.3 + Math.sin(Date.now() / 400 + tier * 1.5) * 0.15;
         this.ctx.globalAlpha = pulseIntensity;
-        const glowGrad = this.ctx.createRadialGradient(0, 0, data.radius * 0.8, 0, 0, data.radius * 1.6);
-        glowGrad.addColorStop(0, data.color);
-        glowGrad.addColorStop(0.5, data.color + '40');
-        glowGrad.addColorStop(1, 'transparent');
-        this.ctx.fillStyle = glowGrad;
+        this.ctx.fillStyle = this.itemGlowGradients[tier];
         this.ctx.beginPath();
         this.ctx.arc(0, 0, data.radius * 1.6, 0, Math.PI * 2);
         this.ctx.fill();
-        this.ctx.restore();
 
-        this.ctx.save();
-        this.ctx.translate(pos.x, pos.y);
+        // 2. Rotate & Draw Core Body
+        this.ctx.globalAlpha = 1.0;
         this.ctx.rotate(angle);
 
         if (body.justMerged) {
@@ -892,98 +1205,31 @@ class CruciblePhysics {
         } else {
             this.drawProceduralVector(tier, data);
         }
-        this.ctx.restore();
 
-        this.ctx.save();
-        this.ctx.translate(pos.x, pos.y);
+        // 3. Draw outline (Outer stroke is drawn on same matrix transformation)
         this.ctx.globalAlpha = 0.4 + Math.sin(Date.now() / 500 + tier) * 0.15;
         this.ctx.strokeStyle = data.color;
         this.ctx.lineWidth = 2;
-        this.ctx.shadowBlur = this.isMobile ? 0 : 12;
-        this.ctx.shadowColor = data.color;
+        if (useShadow) {
+            this.ctx.shadowBlur = 12;
+            this.ctx.shadowColor = data.color;
+        }
         this.ctx.beginPath();
         this.ctx.arc(0, 0, data.radius + 1.5, 0, Math.PI * 2);
         this.ctx.stroke();
-        this.ctx.restore();
 
-        this.ctx.save();
-        this.ctx.translate(pos.x, pos.y);
-        this.ctx.globalAlpha = 0.25;
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = `bold ${Math.max(8, data.radius * 0.35)}px Cinzel`;
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
         this.ctx.restore();
     }
 
     drawProceduralVector(tier, data) {
-        const r = data.radius;
-
-        this.ctx.shadowBlur = this.isMobile ? 0 : 14;
-        this.ctx.shadowColor = data.color;
-
-        const grad = this.ctx.createRadialGradient(-r / 3, -r / 3, r / 8, 0, 0, r);
-        grad.addColorStop(0, '#ffffff');
-        grad.addColorStop(0.15, data.color);
-        grad.addColorStop(0.6, data.color + 'aa');
-        grad.addColorStop(1, '#0c0a10');
-        this.ctx.fillStyle = grad;
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, r, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        this.ctx.strokeStyle = data.color + '60';
-        this.ctx.lineWidth = 1;
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, r * 0.65, 0, Math.PI * 2);
-        this.ctx.stroke();
-
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-        this.ctx.lineWidth = 1.5;
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, r, 0, Math.PI * 2);
-        this.ctx.stroke();
-
-        this.ctx.shadowBlur = 0;
-        this.ctx.fillStyle = '#fff';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-
-        switch (tier) {
-            case 1:
-                this.ctx.fillStyle = 'rgba(255,255,255,0.9)';
-                this.ctx.shadowBlur = this.isMobile ? 0 : 6;
-                this.ctx.shadowColor = data.color;
-                this.ctx.beginPath();
-                this.ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
-                this.ctx.fill();
-                this.ctx.shadowBlur = 0;
-                break;
-            case 2:
-                this.ctx.font = `bold ${r * 1.1}px Arial`;
-                this.ctx.fillText('🦷', 0, 2);
-                break;
-            case 3:
-                this.ctx.font = `${r}px Arial`;
-                this.ctx.fillText('🧪', 0, 2);
-                break;
-            case 4:
-                this.ctx.font = `${r}px Arial`;
-                this.ctx.fillText('💍', 0, 2);
-                break;
-            case 5:
-                this.ctx.font = `${r}px Arial`;
-                this.ctx.fillText('💀', 0, 2);
-                break;
-            case 6:
-                this.ctx.font = `${r * 1.1}px Arial`;
-                this.ctx.fillText('👑', 0, 2);
-                break;
+        // Fast offscreen canvas drawing replaces multiple paths/text drawing in frame
+        const canvas = this.cachedItemCanvases[tier];
+        if (canvas) {
+            this.ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
         }
     }
 
     clipToBowl(topY) {
-        // Redrawn to trace the exact physics-driven ellipse mesh parameters
         this.ctx.beginPath();
         this.ctx.moveTo(92, topY);
         this.ctx.lineTo(92, 600);
@@ -1004,19 +1250,16 @@ class CruciblePhysics {
         this.ctx.save();
         this.clipToBowl(surfY);
 
-        const grad = this.ctx.createLinearGradient(0, surfY, 0, 670);
-        grad.addColorStop(0, '#6a1fad');
-        grad.addColorStop(0.3, '#5a189a');
-        grad.addColorStop(0.6, '#3c096c');
-        grad.addColorStop(1, '#10002b');
-        this.ctx.fillStyle = grad;
+        // Cached back fluid gradient
+        this.ctx.fillStyle = this.backFluidGrad;
         this.ctx.fillRect(80, surfY, 290, 180);
 
-        const shimmer = this.ctx.createLinearGradient(0, surfY, 0, surfY + 20);
-        shimmer.addColorStop(0, `rgba(199, 125, 255, ${0.1 + Math.sin(Date.now() / 800) * 0.05})`);
-        shimmer.addColorStop(1, 'transparent');
-        this.ctx.fillStyle = shimmer;
+        // Cached back fluid shimmer gradient
+        this.ctx.save();
+        this.ctx.globalAlpha = 0.1 + Math.sin(Date.now() / 800) * 0.05;
+        this.ctx.fillStyle = this.backFluidShimmerGrad;
         this.ctx.fillRect(95, surfY, 260, 20);
+        this.ctx.restore();
 
         const now = Date.now();
         for (const bub of this.bubbles) {
@@ -1052,12 +1295,8 @@ class CruciblePhysics {
         this.ctx.save();
         this.clipToBowl(surfY - 15);
 
-        const grad = this.ctx.createLinearGradient(0, surfY - 10, 0, surfY + 60);
-        grad.addColorStop(0, 'rgba(199, 125, 255, 0.4)');
-        grad.addColorStop(0.15, 'rgba(157, 78, 221, 0.3)');
-        grad.addColorStop(0.4, 'rgba(157, 78, 221, 0.15)');
-        grad.addColorStop(1, 'rgba(60, 9, 108, 0.0)');
-        this.ctx.fillStyle = grad;
+        // Cached front fluid gradient
+        this.ctx.fillStyle = this.frontFluidGrad;
 
         const t = Date.now() / 400;
         this.ctx.beginPath();
@@ -1086,34 +1325,40 @@ class CruciblePhysics {
 
     drawWarningLine() {
         const y = this.cauldronRimY;
+        const useShadow = !this.isMobile;
 
         this.ctx.save();
         if (this.isAboveLine) {
             const flash = Math.sin(Date.now() / 100) > 0;
             this.ctx.strokeStyle = flash ? '#ff0000' : '#880000';
             this.ctx.lineWidth = 3;
-            this.ctx.shadowBlur = this.isMobile ? 0 : 20;
-            this.ctx.shadowColor = '#ff0000';
+            if (useShadow) {
+                this.ctx.shadowBlur = 20;
+                this.ctx.shadowColor = '#ff0000';
+            }
 
             this.ctx.beginPath();
             this.ctx.moveTo(85, y);
             this.ctx.lineTo(365, y);
             this.ctx.stroke();
 
-            const warnGrad = this.ctx.createLinearGradient(0, y - 30, 0, y);
-            warnGrad.addColorStop(0, 'transparent');
-            warnGrad.addColorStop(1, `rgba(230, 57, 70, ${flash ? 0.15 : 0.05})`);
-            this.ctx.fillStyle = warnGrad;
+            // Cached warning line gradient with alpha adjustment
+            this.ctx.save();
+            this.ctx.globalAlpha = flash ? 0.15 : 0.05;
+            this.ctx.fillStyle = this.warnLineGrad;
             this.ctx.fillRect(85, y - 30, 280, 30);
+            this.ctx.restore();
 
-            this.ctx.shadowBlur = 0;
+            if (useShadow) this.ctx.shadowBlur = 0;
             this.ctx.fillStyle = '#ff3333';
             this.ctx.font = 'bold 12px Cinzel';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
 
-            this.ctx.shadowBlur = this.isMobile ? 0 : 8;
-            this.ctx.shadowColor = '#ff0000';
+            if (useShadow) {
+                this.ctx.shadowBlur = 8;
+                this.ctx.shadowColor = '#ff0000';
+            }
             this.ctx.fillText(`⚠ SEAL CRACKING: ${this.warningTimeRemaining.toFixed(1)}s ⚠`, 225, y - 14);
         } else {
             this.ctx.strokeStyle = 'rgba(157, 78, 221, 0.15)';
@@ -1138,11 +1383,8 @@ class CruciblePhysics {
         const rx = Math.max(minX, Math.min(this.mouseX, maxX));
 
         this.ctx.save();
-        const lineGrad = this.ctx.createLinearGradient(0, this.dropZoneY, 0, 490);
-        lineGrad.addColorStop(0, `${data.color}30`);
-        lineGrad.addColorStop(0.5, `${data.color}15`);
-        lineGrad.addColorStop(1, `${data.color}05`);
-        this.ctx.strokeStyle = lineGrad;
+        // Cached indicator gradient
+        this.ctx.strokeStyle = this.dropLineGradients[this.currentTierIndex];
         this.ctx.lineWidth = 1.5;
         this.ctx.setLineDash([3, 6]);
         this.ctx.beginPath();
@@ -1159,8 +1401,11 @@ class CruciblePhysics {
         this.ctx.scale(pulse, pulse);
         this.ctx.globalAlpha = 0.8;
 
-        this.ctx.shadowBlur = this.isMobile ? 0 : 15;
-        this.ctx.shadowColor = data.color;
+        const useShadow = !this.isMobile;
+        if (useShadow) {
+            this.ctx.shadowBlur = 15;
+            this.ctx.shadowColor = data.color;
+        }
 
         const img = this.images[data.imgKey];
         if (img) {
@@ -1190,7 +1435,6 @@ class CruciblePhysics {
         this.ctx.strokeStyle = 'rgba(70, 65, 85, 0.6)';
         this.ctx.lineWidth = 5;
 
-        // Traced manually to mirror the collision model precisely
         this.ctx.beginPath();
         this.ctx.moveTo(60, 340);
         this.ctx.lineTo(60, 600);
@@ -1207,12 +1451,15 @@ class CruciblePhysics {
 
         this.ctx.strokeStyle = '#4a4659';
         this.ctx.lineWidth = 6;
-        this.ctx.shadowBlur = this.isMobile ? 0 : 8;
-        this.ctx.shadowColor = 'rgba(157, 78, 221, 0.3)';
+        const useShadow = !this.isMobile;
+        if (useShadow) {
+            this.ctx.shadowBlur = 8;
+            this.ctx.shadowColor = 'rgba(157, 78, 221, 0.3)';
+        }
         this.ctx.beginPath();
         this.ctx.ellipse(225, 340, 165, 20, 0, 0, Math.PI * 2);
         this.ctx.stroke();
-        this.ctx.shadowBlur = 0;
+        if (useShadow) this.ctx.shadowBlur = 0;
 
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
         this.ctx.lineWidth = 2;
@@ -1229,20 +1476,27 @@ class CruciblePhysics {
     }
 
     drawParticles() {
-        for (const p of this.particles) {
-            this.ctx.save();
+        const useShadow = !this.isMobile;
+        for (let i = 0; i < this.maxParticles; i++) {
+            const p = this.particlePool[i];
+            if (!p.active) continue;
+
             this.ctx.globalAlpha = p.opacity;
             if (p.isRing) {
                 this.ctx.strokeStyle = p.color;
                 this.ctx.lineWidth = Math.max(1, 4 - p.radius * 0.02);
-                this.ctx.shadowBlur = this.isMobile ? 0 : 10;
-                this.ctx.shadowColor = p.color;
+                if (useShadow) {
+                    this.ctx.shadowBlur = 10;
+                    this.ctx.shadowColor = p.color;
+                }
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 this.ctx.stroke();
             } else if (p.isSpark) {
-                this.ctx.shadowBlur = this.isMobile ? 0 : 8;
-                this.ctx.shadowColor = p.color;
+                if (useShadow) {
+                    this.ctx.shadowBlur = 8;
+                    this.ctx.shadowColor = p.color;
+                }
                 this.ctx.fillStyle = '#fff';
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.radius * 0.4, 0, Math.PI * 2);
@@ -1253,38 +1507,63 @@ class CruciblePhysics {
                 this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 this.ctx.fill();
             } else {
-                this.ctx.shadowBlur = this.isMobile ? 0 : 6;
-                this.ctx.shadowColor = p.color;
+                if (useShadow) {
+                    this.ctx.shadowBlur = 6;
+                    this.ctx.shadowColor = p.color;
+                }
                 this.ctx.fillStyle = p.color;
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 this.ctx.fill();
             }
-            this.ctx.restore();
         }
+        if (useShadow) {
+            this.ctx.shadowBlur = 0;
+        }
+        this.ctx.globalAlpha = 1.0;
+    }
+
+    shake(duration = 15, magnitude = 5) {
+        this.shakeDuration = duration;
+        this.shakeMagnitude = magnitude;
     }
 
     resetWorld() {
-        const { World, Composite } = Matter;
+        const { World } = Matter;
 
-        const bodies = Composite.allBodies(this.world);
-        for (let i = bodies.length - 1; i >= 0; i--) {
-            if (!bodies[i].isStatic) World.remove(this.world, bodies[i]);
+        this.shakeDuration = 0;
+        this.shakeMagnitude = 0;
+
+        for (let i = 0; i < this.items.length; i++) {
+            World.remove(this.world, this.items[i]);
+        }
+        this.items = [];
+
+        this.engine = null;
+        this.world = null;
+
+        this.initCachedGradients();
+        this.initMatter();
+
+        // Reset particle and trail pools
+        for (let i = 0; i < this.maxParticles; i++) {
+            this.particlePool[i].active = false;
+        }
+        for (let i = 0; i < this.maxTrails; i++) {
+            this.trailPool[i].active = false;
         }
 
-        this.particles = [];
-        this.trails = [];
+        this.textParticles = [];
         this.isGameOver = false;
         this.isAboveLine = false;
-        this.hasAscended = false; // Add this
-        this.isPaused = false;    // Add this
+        this.hasAscended = false;
+        this.isPaused = false;
 
         if (this.warningTimer) {
             clearInterval(this.warningTimer);
             this.warningTimer = null;
         }
 
-        this.runner.enabled = true;
         this.rollNextIngredients();
     }
 }
