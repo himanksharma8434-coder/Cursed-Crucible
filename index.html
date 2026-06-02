@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>The Cursed Crucible | Dark Fantasy Merge Game</title>
+    <meta name="description"
+        content="Drop cursed remnants into a witch's boiling cauldron. Merge identical artifacts to conjure higher tiers of dark sorcery in this addictive physics-based merge game.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@500;700;800&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+</head>
+
+<body>
+    <div class="ambient-dust" id="ambientDust"></div>
+
+    <div class="app-container">
+        <main class="game-viewport" id="gameViewport">
+            <div class="atmospheric-shadows"></div>
+            <div class="warning-flash-overlay" id="warningFlash"></div>
+            <div class="merge-flash-overlay" id="mergeFlash"></div>
+            <div class="canvas-container" id="canvasContainer"></div>
+
+            <header class="game-header">
+                <div class="score-card" id="scoreCard">
+                    <span class="label">SOULS REAPED</span>
+                    <span class="value" id="currentScore">0</span>
+                </div>
+                <div class="title-logo">THE CURSED<br>CRUCIBLE</div>
+                <div class="score-card high-score-card" id="highScoreCard">
+                    <span class="label">BEST RITUAL</span>
+                    <span class="value" id="highScore">0</span>
+                </div>
+            </header>
+
+            <div class="combo-display" id="comboDisplay">
+                <span class="combo-count" id="comboCount">×2</span>
+                <span class="combo-label">COMBO</span>
+            </div>
+
+            <div class="hud-controls">
+                <button class="hud-btn" id="musicToggleBtn" title="Toggle Ambient BGM">
+                    <svg viewBox="0 0 24 24">
+                        <path fill="currentColor"
+                            d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                    </svg>
+                </button>
+                <button class="hud-btn" id="soundToggleBtn" title="Toggle SFX">
+                    <svg viewBox="0 0 24 24">
+                        <path fill="currentColor"
+                            d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                    </svg>
+                </button>
+                <button class="hud-btn" id="restartBtn" title="Restart Ritual">
+                    <svg viewBox="0 0 24 24">
+                        <path fill="currentColor"
+                            d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="next-preview-box">
+                <span class="preview-label">NEXT INGREDIENT</span>
+                <div class="preview-item-wrapper" id="previewItemContainer"></div>
+            </div>
+
+            <!-- UI Overlay: Start Screen -->
+            <div class="overlay-panel active" id="startScreen">
+                <div class="overlay-content glass-panel">
+                    <h1 class="gothic-title glow-purple">THE CURSED CRUCIBLE</h1>
+                    <p class="gothic-subtitle">A Dark Fantasy Merge Ritual</p>
+                    <div class="lore-box">
+                        <p>Drop the cursed remnants of mortal souls into the witch's boiling cauldron. Match identical
+                            artifacts to merge them into higher tiers of dark sorcery, culminating in the legendary
+                            <strong>Demon Crown</strong>.
+                        </p>
+                        <p class="caution">Beware: If the crucible overflows and crosses the ritual boundary for more
+                            than 2 seconds, the spell will shatter!</p>
+                    </div>
+                    <button class="btn btn-primary" id="startBtn">BEGIN THE RITUAL</button>
+                </div>
+            </div>
+
+            <!-- UI Overlay: Game Over Screen -->
+            <div class="overlay-panel" id="gameOverScreen">
+                <div class="overlay-content glass-panel">
+                    <h2 class="gothic-title overflow-title glow-red">THE CRUCIBLE OVERFLOWS</h2>
+                    <p class="ritual-failed">The magical seal has broken. Your ritual is undone.</p>
+                    <div class="new-best-badge" id="newBestBadge">★ NEW BEST RITUAL ★</div>
+                    <div class="results-card">
+                        <div class="result-row">
+                            <span class="lbl">Ritual Score</span>
+                            <span class="val" id="finalScore">0</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="lbl">Best Record</span>
+                            <span class="val" id="finalHighScore">0</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-danger" id="reigniteBtn">REIGNITE CRUCIBLE</button>
+                </div>
+            </div>
+
+            <!-- UI Overlay: Victory / Ascension Screen -->
+            <div class="overlay-panel" id="victoryScreen">
+                <div class="overlay-content glass-panel">
+                    <h2 class="gothic-title overflow-title glow-purple">★ ASCENSION ★</h2>
+                    <p class="ritual-failed" style="color: #c77dff; margin-bottom: 25px;">
+                        The ritual is complete. You have forged the legendary Demon Crown!
+                    </p>
+                    <div class="results-card">
+                        <div class="result-row">
+                            <span class="lbl">Souls Reaped</span>
+                            <span class="val" id="victoryScore">0</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" id="continueBtn" style="margin-bottom: 15px;">CONTINUE
+                        ENDLESSLY</button>
+                    <button class="btn btn-danger" id="victoryRestartBtn">REIGNITE CRUCIBLE</button>
+                </div>
+            </div>
+
+            <!-- Bottom Evolution Reference Drawer -->
+            <div class="evolution-drawer" id="evolutionDrawer">
+                <button class="drawer-handle" id="drawerHandle">
+                    <span>INGREDIENTS EVOLUTION</span>
+                    <svg viewBox="0 0 24 24" class="arrow-icon">
+                        <path fill="currentColor" d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z" />
+                    </svg>
+                </button>
+                <div class="drawer-content">
+                    <div class="evolution-flow">
+                        <div class="evolution-tier" data-tier="1">
+                            <div class="tier-icon-circle tier1-color">
+                                <img src="assets/images/tier1_soul.png" alt="Soul" class="tier-img"
+                                    onerror="this.style.display='none'">
+                                <div class="tier-fallback icon-soul"></div>
+                            </div>
+                            <span class="tier-name">Soul Wisp</span>
+                        </div>
+                        <div class="evolution-arrow">→</div>
+                        <div class="evolution-tier" data-tier="2">
+                            <div class="tier-icon-circle tier2-color">
+                                <img src="assets/images/tier2_tooth.png" alt="Tooth" class="tier-img"
+                                    onerror="this.style.display='none'">
+                                <div class="tier-fallback icon-tooth"></div>
+                            </div>
+                            <span class="tier-name">Cracked Tooth</span>
+                        </div>
+                        <div class="evolution-arrow">→</div>
+                        <div class="evolution-tier" data-tier="3">
+                            <div class="tier-icon-circle tier3-color">
+                                <img src="assets/images/tier3_vial.png" alt="Vial" class="tier-img"
+                                    onerror="this.style.display='none'">
+                                <div class="tier-fallback icon-vial"></div>
+                            </div>
+                            <span class="tier-name">Blood Vial</span>
+                        </div>
+                        <div class="evolution-arrow">→</div>
+                        <div class="evolution-tier" data-tier="4">
+                            <div class="tier-icon-circle tier4-color">
+                                <div class="tier-fallback icon-ring"></div>
+                            </div>
+                            <span class="tier-name">Cursed Ring</span>
+                        </div>
+                        <div class="evolution-arrow">→</div>
+                        <div class="evolution-tier" data-tier="5">
+                            <div class="tier-icon-circle tier5-color">
+                                <div class="tier-fallback icon-skull"></div>
+                            </div>
+                            <span class="tier-name">Cursed Skull</span>
+                        </div>
+                        <div class="evolution-arrow">→</div>
+                        <div class="evolution-tier" data-tier="6">
+                            <div class="tier-icon-circle tier6-color">
+                                <div class="tier-fallback icon-crown"></div>
+                            </div>
+                            <span class="tier-name">Demon Crown</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="audio.js"></script>
+    <script src="physics.js"></script>
+    <script src="game.js"></script>
+</body>
+
+</html>
