@@ -10,6 +10,9 @@ class CruciblePhysics {
         this.container = document.getElementById(canvasContainerId);
         this.callbacks = gameCallbacks;
 
+        // Detect mobile for performance optimizations
+        this.isMobile = window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
         // Canvas Setup
         this.canvas = document.createElement('canvas');
         this.ctx = this.canvas.getContext('2d');
@@ -193,15 +196,28 @@ class CruciblePhysics {
             cw = (containerHeight * 9) / 16;
         }
 
-        this.canvas.width = this.width;
-        this.canvas.height = this.height;
+        // High-DPI screen support for crisp mobile graphics
+        const dpr = window.devicePixelRatio || 1;
+        this.canvas.width = this.width * dpr;
+        this.canvas.height = this.height * dpr;
+
         this.canvas.style.width = `${cw}px`;
         this.canvas.style.height = `${ch}px`;
+
+        // Center the canvas inside the container
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.left = `${(containerWidth - cw) / 2}px`;
+        this.canvas.style.top = `${(containerHeight - ch) / 2}px`;
+
+        // Scale drawing context to match DPI
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.scale(dpr, dpr);
     }
 
     initFogParticles(count) {
+        const finalCount = this.isMobile ? Math.floor(count / 2) : count;
         const arr = [];
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < finalCount; i++) {
             arr.push({
                 x: Math.random() * this.width,
                 y: 200 + Math.random() * 300,
@@ -213,6 +229,7 @@ class CruciblePhysics {
         }
         return arr;
     }
+
     rollNextIngredients() {
         this.currentTierIndex = 6;
         this.nextTierIndex = 6;
@@ -241,8 +258,9 @@ class CruciblePhysics {
     }
 
     initFireParticles(count) {
+        const finalCount = this.isMobile ? Math.floor(count / 2) : count;
         const arr = [];
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < finalCount; i++) {
             arr.push(this.createFireParticle());
         }
         return arr;
@@ -476,8 +494,9 @@ class CruciblePhysics {
     }
 
     initBubbles(count) {
+        const finalCount = this.isMobile ? Math.floor(count / 2) : count;
         const arr = [];
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < finalCount; i++) {
             arr.push({
                 x: 110 + Math.random() * 230,
                 y: 500 + Math.random() * 140,
@@ -781,7 +800,7 @@ class CruciblePhysics {
         this.ctx.save();
         for (const f of this.fireParticles) {
             this.ctx.globalAlpha = f.life * 0.6;
-            this.ctx.shadowBlur = 8;
+            this.ctx.shadowBlur = this.isMobile ? 0 : 8;
             this.ctx.shadowColor = f.color;
 
             const grad = this.ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.radius);
@@ -803,7 +822,7 @@ class CruciblePhysics {
             this.ctx.save();
             this.ctx.globalAlpha = t.opacity;
             this.ctx.fillStyle = t.color;
-            this.ctx.shadowBlur = 4;
+            this.ctx.shadowBlur = this.isMobile ? 0 : 4;
             this.ctx.shadowColor = t.color;
             this.ctx.beginPath();
             this.ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
@@ -880,7 +899,7 @@ class CruciblePhysics {
         this.ctx.globalAlpha = 0.4 + Math.sin(Date.now() / 500 + tier) * 0.15;
         this.ctx.strokeStyle = data.color;
         this.ctx.lineWidth = 2;
-        this.ctx.shadowBlur = 12;
+        this.ctx.shadowBlur = this.isMobile ? 0 : 12;
         this.ctx.shadowColor = data.color;
         this.ctx.beginPath();
         this.ctx.arc(0, 0, data.radius + 1.5, 0, Math.PI * 2);
@@ -900,7 +919,7 @@ class CruciblePhysics {
     drawProceduralVector(tier, data) {
         const r = data.radius;
 
-        this.ctx.shadowBlur = 14;
+        this.ctx.shadowBlur = this.isMobile ? 0 : 14;
         this.ctx.shadowColor = data.color;
 
         const grad = this.ctx.createRadialGradient(-r / 3, -r / 3, r / 8, 0, 0, r);
@@ -933,7 +952,7 @@ class CruciblePhysics {
         switch (tier) {
             case 1:
                 this.ctx.fillStyle = 'rgba(255,255,255,0.9)';
-                this.ctx.shadowBlur = 6;
+                this.ctx.shadowBlur = this.isMobile ? 0 : 6;
                 this.ctx.shadowColor = data.color;
                 this.ctx.beginPath();
                 this.ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
@@ -1073,7 +1092,7 @@ class CruciblePhysics {
             const flash = Math.sin(Date.now() / 100) > 0;
             this.ctx.strokeStyle = flash ? '#ff0000' : '#880000';
             this.ctx.lineWidth = 3;
-            this.ctx.shadowBlur = 20;
+            this.ctx.shadowBlur = this.isMobile ? 0 : 20;
             this.ctx.shadowColor = '#ff0000';
 
             this.ctx.beginPath();
@@ -1093,7 +1112,7 @@ class CruciblePhysics {
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
 
-            this.ctx.shadowBlur = 8;
+            this.ctx.shadowBlur = this.isMobile ? 0 : 8;
             this.ctx.shadowColor = '#ff0000';
             this.ctx.fillText(`⚠ SEAL CRACKING: ${this.warningTimeRemaining.toFixed(1)}s ⚠`, 225, y - 14);
         } else {
@@ -1140,7 +1159,7 @@ class CruciblePhysics {
         this.ctx.scale(pulse, pulse);
         this.ctx.globalAlpha = 0.8;
 
-        this.ctx.shadowBlur = 15;
+        this.ctx.shadowBlur = this.isMobile ? 0 : 15;
         this.ctx.shadowColor = data.color;
 
         const img = this.images[data.imgKey];
@@ -1188,7 +1207,7 @@ class CruciblePhysics {
 
         this.ctx.strokeStyle = '#4a4659';
         this.ctx.lineWidth = 6;
-        this.ctx.shadowBlur = 8;
+        this.ctx.shadowBlur = this.isMobile ? 0 : 8;
         this.ctx.shadowColor = 'rgba(157, 78, 221, 0.3)';
         this.ctx.beginPath();
         this.ctx.ellipse(225, 340, 165, 20, 0, 0, Math.PI * 2);
@@ -1216,13 +1235,13 @@ class CruciblePhysics {
             if (p.isRing) {
                 this.ctx.strokeStyle = p.color;
                 this.ctx.lineWidth = Math.max(1, 4 - p.radius * 0.02);
-                this.ctx.shadowBlur = 10;
+                this.ctx.shadowBlur = this.isMobile ? 0 : 10;
                 this.ctx.shadowColor = p.color;
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 this.ctx.stroke();
             } else if (p.isSpark) {
-                this.ctx.shadowBlur = 8;
+                this.ctx.shadowBlur = this.isMobile ? 0 : 8;
                 this.ctx.shadowColor = p.color;
                 this.ctx.fillStyle = '#fff';
                 this.ctx.beginPath();
@@ -1234,7 +1253,7 @@ class CruciblePhysics {
                 this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 this.ctx.fill();
             } else {
-                this.ctx.shadowBlur = 6;
+                this.ctx.shadowBlur = this.isMobile ? 0 : 6;
                 this.ctx.shadowColor = p.color;
                 this.ctx.fillStyle = p.color;
                 this.ctx.beginPath();
@@ -1269,6 +1288,5 @@ class CruciblePhysics {
         this.rollNextIngredients();
     }
 }
-
 
 window.CruciblePhysics = CruciblePhysics;

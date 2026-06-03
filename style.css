@@ -96,14 +96,27 @@ body {
 }
 
 @keyframes drift {
-    0% { transform: rotate(0deg) translate(0, 0); }
-    100% { transform: rotate(360deg) translate(-50px, -50px); }
+    0% {
+        transform: rotate(0deg) translate(0, 0);
+    }
+
+    100% {
+        transform: rotate(360deg) translate(-50px, -50px);
+    }
 }
 
 @keyframes dustDrift {
-    0% { transform: translate(0, 0); }
-    50% { transform: translate(-15px, -10px); }
-    100% { transform: translate(0, 0); }
+    0% {
+        transform: translate(0, 0);
+    }
+
+    50% {
+        transform: translate(-15px, -10px);
+    }
+
+    100% {
+        transform: translate(0, 0);
+    }
 }
 
 /* Floating ember particles (injected by JS) */
@@ -116,10 +129,23 @@ body {
 }
 
 @keyframes emberFloat {
-    0% { transform: translateY(0) scale(1); opacity: 0; }
-    10% { opacity: 1; }
-    90% { opacity: 0.6; }
-    100% { transform: translateY(-100vh) scale(0.3); opacity: 0; }
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 0;
+    }
+
+    10% {
+        opacity: 1;
+    }
+
+    90% {
+        opacity: 0.6;
+    }
+
+    100% {
+        transform: translateY(-100vh) scale(0.3);
+        opacity: 0;
+    }
 }
 
 /* ═══ Main Layout Container ═══ */
@@ -162,22 +188,25 @@ body {
     right: -2px;
     bottom: -2px;
     border-radius: 24px;
-    background: conic-gradient(
-        from 0deg,
-        transparent 0%,
-        rgba(157, 78, 221, 0.2) 25%,
-        transparent 50%,
-        rgba(191, 85, 236, 0.15) 75%,
-        transparent 100%
-    );
+    background: conic-gradient(from 0deg,
+            transparent 0%,
+            rgba(157, 78, 221, 0.2) 25%,
+            transparent 50%,
+            rgba(191, 85, 236, 0.15) 75%,
+            transparent 100%);
     z-index: -1;
     animation: borderRotate 12s linear infinite;
     opacity: 0.4;
 }
 
 @keyframes borderRotate {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 /* Dark atmospheric shadow overlay */
@@ -204,8 +233,7 @@ body {
 
 canvas {
     display: block;
-    width: 100%;
-    height: 100%;
+    touch-action: none;
 }
 
 /* ═══ Game Header (HUD Scoreboard) ═══ */
@@ -220,9 +248,9 @@ canvas {
     align-items: center;
     z-index: 15;
     background: linear-gradient(to bottom,
-        rgba(5, 4, 10, 0.95) 0%,
-        rgba(5, 4, 10, 0.6) 60%,
-        rgba(5, 4, 10, 0) 100%);
+            rgba(5, 4, 10, 0.95) 0%,
+            rgba(5, 4, 10, 0.6) 60%,
+            rgba(5, 4, 10, 0) 100%);
     pointer-events: none;
 }
 
@@ -286,8 +314,15 @@ canvas {
 }
 
 @keyframes pulseGlow {
-    0%, 100% { text-shadow: 0 0 10px var(--border-glow), 0 0 20px rgba(157, 78, 221, 0.15); }
-    50% { text-shadow: 0 0 18px var(--border-glow), 0 0 35px var(--color-accent), 0 0 50px rgba(157, 78, 221, 0.15); }
+
+    0%,
+    100% {
+        text-shadow: 0 0 10px var(--border-glow), 0 0 20px rgba(157, 78, 221, 0.15);
+    }
+
+    50% {
+        text-shadow: 0 0 18px var(--border-glow), 0 0 35px var(--color-accent), 0 0 50px rgba(157, 78, 221, 0.15);
+    }
 }
 
 /* ═══ Combo Counter HUD ═══ */
@@ -331,8 +366,13 @@ canvas {
 }
 
 @keyframes comboPulse {
-    0% { transform: translateX(-50%) scale(1.4); }
-    100% { transform: translateX(-50%) scale(1); }
+    0% {
+        transform: translateX(-50%) scale(1.4);
+    }
+
+    100% {
+        transform: translateX(-50%) scale(1);
+    }
 }
 
 /* ═══ Next Item Preview Box ═══ */
@@ -503,13 +543,27 @@ canvas {
 }
 
 @keyframes runeRotate {
-    0% { transform: translate(-50%, -50%) rotate(0deg); }
-    100% { transform: translate(-50%, -50%) rotate(360deg); }
+    0% {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+
+    100% {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
 }
 
 @keyframes panelEnter {
-    0% { transform: scale(0.85) translateY(30px); opacity: 0; filter: blur(8px); }
-    100% { transform: scale(1) translateY(0); opacity: 1; filter: blur(0); }
+    0% {
+        transform: scale(0.85) translateY(30px);
+        opacity: 0;
+        filter: blur(8px);
+    }
+
+    100% {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+        filter: blur(0);
+    }
 }
 
 /* ═══ Gothic Titles and Headers ═══ */
@@ -625,12 +679,10 @@ canvas {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(
-        90deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.08) 50%,
-        transparent 100%
-    );
+    background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.08) 50%,
+            transparent 100%);
     transition: left 0.6s ease;
     z-index: 0;
 }
@@ -683,9 +735,12 @@ canvas {
 }
 
 @keyframes gameOverPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         text-shadow: 0 0 10px var(--color-red-glow), 0 0 25px rgba(139, 0, 0, 0.8);
     }
+
     50% {
         text-shadow: 0 0 20px var(--color-red-glow), 0 0 45px rgba(230, 57, 70, 0.6), 0 0 80px rgba(230, 57, 70, 0.2);
     }
@@ -756,8 +811,17 @@ canvas {
 }
 
 @keyframes badgePulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.7; transform: scale(1.05); }
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.7;
+        transform: scale(1.05);
+    }
 }
 
 /* ═══ Evolution Drawer (Reference Guide) ═══ */
@@ -892,8 +956,15 @@ canvas {
 }
 
 @keyframes arrowPulse {
-    0%, 100% { opacity: 0.35; }
-    50% { opacity: 0.7; }
+
+    0%,
+    100% {
+        opacity: 0.35;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
 }
 
 /* ═══ Fallback icons visual styles ═══ */
@@ -904,22 +975,41 @@ canvas {
     position: relative;
 }
 
-.tier1-color { color: var(--color-tier1); }
-.tier2-color { color: var(--color-tier2); }
-.tier3-color { color: var(--color-tier3); }
-.tier4-color { color: var(--color-tier4); }
-.tier5-color { color: var(--color-tier5); }
-.tier6-color { color: var(--color-tier6); }
+.tier1-color {
+    color: var(--color-tier1);
+}
+
+.tier2-color {
+    color: var(--color-tier2);
+}
+
+.tier3-color {
+    color: var(--color-tier3);
+}
+
+.tier4-color {
+    color: var(--color-tier4);
+}
+
+.tier5-color {
+    color: var(--color-tier5);
+}
+
+.tier6-color {
+    color: var(--color-tier6);
+}
 
 /* SVG Procedural Graphics for Tier Icons */
 .icon-soul::before {
     content: '';
     position: absolute;
-    width: 40%; height: 40%;
+    width: 40%;
+    height: 40%;
     background: var(--color-tier1);
     border-radius: 50% 50% 0 50%;
     transform: rotate(-45deg);
-    top: 25%; left: 30%;
+    top: 25%;
+    left: 30%;
     box-shadow: 0 0 10px var(--color-tier1);
     animation: wispFlicker 1.5s infinite ease-in-out;
 }
@@ -928,7 +1018,8 @@ canvas {
     content: '🦷';
     font-size: 16px;
     position: absolute;
-    top: 50%; left: 50%;
+    top: 50%;
+    left: 50%;
     transform: translate(-50%, -50%);
 }
 
@@ -936,26 +1027,32 @@ canvas {
     content: '🧪';
     font-size: 16px;
     position: absolute;
-    top: 50%; left: 50%;
+    top: 50%;
+    left: 50%;
     transform: translate(-50%, -50%) rotate(45deg);
 }
 
 .icon-ring::before {
     content: '';
     position: absolute;
-    width: 45%; height: 45%;
+    width: 45%;
+    height: 45%;
     border: 2px solid #bda85d;
     border-radius: 50%;
-    top: 27.5%; left: 27.5%;
+    top: 27.5%;
+    left: 27.5%;
     box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
 }
+
 .icon-ring::after {
     content: '';
     position: absolute;
-    width: 25%; height: 25%;
+    width: 25%;
+    height: 25%;
     background: var(--color-tier4);
     border-radius: 50%;
-    top: 15%; left: 37.5%;
+    top: 15%;
+    left: 37.5%;
     box-shadow: 0 0 8px var(--color-tier4);
 }
 
@@ -963,7 +1060,8 @@ canvas {
     content: '💀';
     font-size: 18px;
     position: absolute;
-    top: 50%; left: 50%;
+    top: 50%;
+    left: 50%;
     transform: translate(-50%, -50%);
     filter: drop-shadow(0 0 6px var(--color-tier5));
 }
@@ -972,20 +1070,37 @@ canvas {
     content: '👑';
     font-size: 20px;
     position: absolute;
-    top: 50%; left: 50%;
+    top: 50%;
+    left: 50%;
     transform: translate(-50%, -50%);
     filter: drop-shadow(0 0 8px var(--color-tier6));
     animation: crownShimmer 2s ease-in-out infinite;
 }
 
 @keyframes crownShimmer {
-    0%, 100% { filter: drop-shadow(0 0 8px var(--color-tier6)); }
-    50% { filter: drop-shadow(0 0 16px var(--color-tier6)) brightness(1.2); }
+
+    0%,
+    100% {
+        filter: drop-shadow(0 0 8px var(--color-tier6));
+    }
+
+    50% {
+        filter: drop-shadow(0 0 16px var(--color-tier6)) brightness(1.2);
+    }
 }
 
 @keyframes wispFlicker {
-    0%, 100% { transform: rotate(-45deg) scale(0.95); opacity: 0.8; }
-    50% { transform: rotate(-40deg) scale(1.15); opacity: 1; }
+
+    0%,
+    100% {
+        transform: rotate(-45deg) scale(0.95);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: rotate(-40deg) scale(1.15);
+        opacity: 1;
+    }
 }
 
 /* ═══ Screen Shake & Flash Effects ═══ */
@@ -994,12 +1109,31 @@ canvas {
 }
 
 @keyframes viewportShake {
-    0%, 100% { transform: translate(0, 0); }
-    15% { transform: translate(-4px, 2px); }
-    30% { transform: translate(4px, -3px); }
-    45% { transform: translate(-3px, 3px); }
-    60% { transform: translate(3px, -2px); }
-    75% { transform: translate(-2px, 1px); }
+
+    0%,
+    100% {
+        transform: translate(0, 0);
+    }
+
+    15% {
+        transform: translate(-4px, 2px);
+    }
+
+    30% {
+        transform: translate(4px, -3px);
+    }
+
+    45% {
+        transform: translate(-3px, 3px);
+    }
+
+    60% {
+        transform: translate(3px, -2px);
+    }
+
+    75% {
+        transform: translate(-2px, 1px);
+    }
 }
 
 /* Warning flash overlay when about to die */
@@ -1013,11 +1147,9 @@ canvas {
     z-index: 90;
     opacity: 0;
     transition: opacity 0.15s ease;
-    background: radial-gradient(
-        ellipse at top center,
-        rgba(230, 57, 70, 0.25) 0%,
-        transparent 60%
-    );
+    background: radial-gradient(ellipse at top center,
+            rgba(230, 57, 70, 0.25) 0%,
+            transparent 60%);
 }
 
 .warning-flash-overlay.active {
@@ -1026,8 +1158,15 @@ canvas {
 }
 
 @keyframes warningPulse {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 1; }
+
+    0%,
+    100% {
+        opacity: 0.3;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
 /* Merge flash overlay */
@@ -1040,11 +1179,9 @@ canvas {
     pointer-events: none;
     z-index: 6;
     opacity: 0;
-    background: radial-gradient(
-        circle at var(--flash-x, 50%) var(--flash-y, 50%),
-        rgba(157, 78, 221, 0.3) 0%,
-        transparent 40%
-    );
+    background: radial-gradient(circle at var(--flash-x, 50%) var(--flash-y, 50%),
+            rgba(157, 78, 221, 0.3) 0%,
+            transparent 40%);
     transition: opacity 0.1s ease;
 }
 
@@ -1054,8 +1191,13 @@ canvas {
 }
 
 @keyframes mergeFlashAnim {
-    0% { opacity: 1; }
-    100% { opacity: 0; }
+    0% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
 }
 
 /* ═══ Floating Score Pop-ups ═══ */
@@ -1077,9 +1219,11 @@ canvas {
         opacity: 1;
         transform: translateY(0) scale(1.2);
     }
+
     60% {
         opacity: 0.8;
     }
+
     100% {
         opacity: 0;
         transform: translateY(-60px) scale(0.8);
@@ -1106,13 +1250,16 @@ canvas {
         opacity: 0;
         transform: translateY(0) scale(0.5);
     }
+
     15% {
         opacity: 1;
         transform: translateY(-10px) scale(1.1);
     }
+
     60% {
         opacity: 0.7;
     }
+
     100% {
         opacity: 0;
         transform: translateY(-50px) scale(0.7);
@@ -1124,10 +1271,12 @@ canvas {
     .app-container {
         padding: 0;
     }
+
     .game-viewport {
         border-radius: 0;
         border: none;
     }
+
     .game-viewport::before {
         display: none;
     }
@@ -1137,6 +1286,7 @@ canvas {
     .gothic-title {
         font-size: 20px;
     }
+
     .title-logo {
         font-size: 10px;
     }
